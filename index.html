@@ -245,6 +245,19 @@ form{display:grid;gap:10px}
 .tk-ok svg{width:100%;height:56px}
 .stamp{justify-self:center;transform:rotate(-6deg);border:2px solid #2f6b45;color:#2f6b45;border-radius:8px;padding:4px 10px;font:800 18px/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;opacity:.85}
 
+/* ---------- 360° look + driver's cab */
+.chip.toggle{cursor:pointer}
+.chip.toggle[aria-pressed="true"]{background:var(--ink);color:var(--paper-ink)}
+.chip.go{cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,212,154,.45)}
+.view-reset{position:fixed;z-index:16;right:max(16px, env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 62px);height:32px;padding:0 14px;border-radius:999px;border:1px solid var(--line);
+  background:var(--pill);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.view-reset svg{width:14px;height:14px}
+.say{position:fixed;left:0;top:0;z-index:13;pointer-events:none;transform-origin:50% 100%;will-change:transform}
+.say .bub{background:var(--paper);color:var(--paper-ink);border-radius:16px;padding:9px 14px 8px;font-weight:600;font-size:15px;width:max-content;max-width:min(300px, calc(100vw - 32px));text-wrap:balance;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:rise .3s ease-out}
+.say .bub small{display:block;font:500 10.5px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--paper-mute);margin-top:3px}
+.say .tail{width:14px;height:14px;background:var(--paper);transform:rotate(45deg);margin:-8px auto 0;border-radius:2px}
+.cbtn.cab{border-color:rgba(255,212,154,.4)}
+
 /* ---------- loader */
 .loader{position:fixed;inset:0;z-index:50;background:var(--night);display:grid;place-content:center;justify-items:center;gap:14px;transition:opacity .6s;text-align:center;padding-left:var(--gutter-l);padding-right:var(--gutter-r)}
 .loader .lb{font:800 40px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase}
@@ -310,6 +323,8 @@ form{display:grid;gap:10px}
 
 <div id="tag" class="tag" hidden><div class="card"><span class="k"><i></i>Reserved</span><span class="v" id="tagV">9C</span></div><div class="stem"></div></div>
 <div id="tip" class="tip" hidden></div>
+<div id="say" class="say" hidden><div class="bub"><span id="sayText">Hi!</span><small id="saySub">Driver</small></div><div class="tail"></div></div>
+<button id="resetView" class="view-reset" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Reset view</button>
 
 <section id="ticket" class="ticket-wrap" hidden><div class="ticket" id="ticketCard"></div></section>
 
@@ -360,6 +375,7 @@ const CLS = { First:{short:'1ST', name:'1st class'}, Standard:{short:'STD', name
 const clsOf = (tr, i) => i === 0 ? 'First' : i >= tr.coaches - (tr.coaches >= 5 ? 2 : 1) ? 'Sleeper' : 'Standard';
 const MAX_SEL = 6;   // seats per booking
 const RESERVATION_FEE = 40;
+const DRIVER_NAME = 'Yash';   // the driver introduces himself with this name
 const stName = c => STATIONS.find(s => s.code === c)?.name || c;
 function routeFactor(a,b){ const k = [a,b].sort().join('>'); return 0.7 + (hash(k) % 95)/100; }
 function addMins(hhmm, m){ const [h,mm] = hhmm.split(':').map(Number); const t = (h*60 + mm + Math.round(m)) % 1440; return String(Math.floor(t/60)).padStart(2,'0') + ':' + String(t%60).padStart(2,'0'); }
@@ -585,8 +601,9 @@ function buildTrainExterior(T){
     if (c.cls === 'First'){ const gl = new THREE.Mesh(new THREE.BoxGeometry(bl - 0.6, 0.05, 3.13), goldMat); gl.position.set(bx + bl/2, 3.25, 0); g.add(gl); }
     const winMat = new THREE.MeshBasicMaterial({color: WIN_BASE.clone(), polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1});
     const wx = []; for (let x = x0 + 3.2; x < x1 - 1.0; x += 1.9) wx.push(x);
-    const wins = new THREE.InstancedMesh(winGeo, winMat, wx.length);
-    wx.forEach((x, k) => { m.makeTranslation(x, 2.75, 1.562); wins.setMatrixAt(k, m); }); wins.computeBoundingSphere(); g.add(wins);
+    const wins = new THREE.InstancedMesh(winGeo, winMat, wx.length*2), flip = new THREE.Matrix4().makeRotationY(Math.PI);
+    wx.forEach((x, k) => { m.makeTranslation(x, 2.75, 1.562); wins.setMatrixAt(k*2, m); m.makeTranslation(x, 2.75, -1.562).multiply(flip); wins.setMatrixAt(k*2 + 1, m); });
+    wins.computeBoundingSphere(); g.add(wins);
     // door
     const doorX = x0 + 1.55;
     const doorLight = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 2.0), doorLightMat); doorLight.position.set(doorX, 2.2, 1.563); g.add(doorLight);
@@ -607,7 +624,7 @@ function buildTrainExterior(T){
     coaches.push({i, n:c.n, cls:c.cls, free:c.free, total:c.seats.length, body, winMat, door, doorBaseX: doorX, doorX, x0, x1, pickables:[body, stripe, band, wins, door]});
   });
   // streamlined noses: a loft from the coach profile down to a low rounded tip (see noseSurface)
-  const xEnd = -T.zEnd;
+  const xEnd = -T.zEnd, cabPicks = [];
   const mkNose = (jx, dir, ci) => {
     const add = (geo, mat) => { const ms = new THREE.Mesh(geo, mat); ms.position.set(jx, 0.95, 0); ms.scale.x = dir; ms.userData.coach = ci; g.add(ms); return ms; };
     const shell = add(noseGeo('shell'), bodyMat);
@@ -618,11 +635,11 @@ function buildTrainExterior(T){
     const bxp = jx + dir*3.1;
     const bog = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.32, 2.2), MX.dark); bog.position.set(bxp, 0.58, 0); g.add(bog);
     for (const dx of [-0.9, 0.9]) for (const dz of [-0.75, 0.75]){ const wh = new THREE.Mesh(wheelGeo, MX.steel); wh.position.set(bxp + dx, 0.42, dz); g.add(wh); }
-    coaches[ci].pickables.push(shell, ws);
+    (dir < 0 ? cabPicks : coaches[ci].pickables).push(shell, ws);   // the front nose is the driver's cab
   };
   mkNose(0.5, -1, 0);                          // overlaps the first body by 0.25 m to hide the joint
   mkNose(xEnd - 0.5, 1, coaches.length - 1);
-  return {group:g, coaches, xEnd, frameMat, accent};
+  return {group:g, coaches, cab:{i:-1, cab:true, pickables:cabPicks}, xEnd, frameMat, accent};
 }
 
 /* Bullet-train nose as a parametric surface. t: 0 at the coach joint → 1 at the tip; th: angle around the
@@ -759,13 +776,146 @@ function signTex(n){
 const mkHi = geo => { const im = new THREE.InstancedMesh(geo, MI.hi, MAX_SEL); im.count = 0; im.frustumCulled = false; intScene.add(im); return im; };
 const hiSeat = ['cushion','back','head','arm'].map(k => mkHi(GEO[k])), hiBerth = mkHi(GEO.berth);
 
+/* ============================================================ DRIVER'S CAB */
+const CAB = { front:4.7, stand:1.75, zone:0.9, seatX:-0.45, seatZ:3.3 };   // interior z: cab wall at 0.8, windscreen at 4.7
+const MD = {
+  seat: new THREE.MeshStandardMaterial({color:'#17181c', roughness:.7}),
+  uniform: new THREE.MeshStandardMaterial({color:'#1c2638', roughness:.85}),
+  trousers: new THREE.MeshStandardMaterial({color:'#15171c', roughness:.9}),
+  vis: new THREE.MeshStandardMaterial({color:'#ff7a1a', emissive:'#ff5a00', emissiveIntensity:.3, roughness:.6, side:THREE.DoubleSide}),
+  skin: new THREE.MeshStandardMaterial({color:'#a07662', roughness:.75}),
+  hair: new THREE.MeshStandardMaterial({color:'#0f1523', roughness:.95}),
+  face: new THREE.MeshStandardMaterial({color:'#ffffff', roughness:.8, transparent:true, opacity:0, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2}),
+  cap: new THREE.MeshStandardMaterial({color:'#1a2235', roughness:.6}),
+  gold: new THREE.MeshStandardMaterial({color:'#c9a046', roughness:.35, metalness:.8, side:THREE.DoubleSide}),
+  shoe: new THREE.MeshStandardMaterial({color:'#0c0c0e', roughness:.5}),
+  console: new THREE.MeshStandardMaterial({color:'#24262c', roughness:.55, metalness:.4}),
+  consoleTop: new THREE.MeshStandardMaterial({color:'#30333a', roughness:.45, metalness:.35}),
+  cabGlass: new THREE.MeshStandardMaterial({color:'#8fb0d0', roughness:.05, metalness:.3, transparent:true, opacity:.1, depthWrite:false, side:THREE.DoubleSide}),
+  green: new THREE.MeshBasicMaterial({color: hdr('#46ff8a', 3)}),
+};
+function fallbackFace(){
+  return canvasTex(256, 320, (g,w,h)=>{ const gr = g.createRadialGradient(w/2,h/2,60,w/2,h/2,w/2); gr.addColorStop(0,'rgba(160,118,98,1)'); gr.addColorStop(1,'rgba(160,118,98,0)');
+    g.fillStyle = gr; g.fillRect(0,0,w,h); g.fillStyle = '#1a1210';
+    for (const x of [.37,.63]){ g.beginPath(); g.arc(w*x, h*.42, 9, 0, Math.PI*2); g.fill(); }
+    g.strokeStyle = '#4a2a20'; g.lineWidth = 6; g.beginPath(); g.arc(w/2, h*.58, 34, .2*Math.PI, .8*Math.PI); g.stroke(); });
+}
+// a little self-illumination keeps the face readable in the dim cab
+function setFace(t){ t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAX_ANISO; MD.face.map = MD.face.emissiveMap = t; MD.face.emissive.set('#ffffff'); MD.face.emissiveIntensity = 0.3; MD.face.opacity = 1; MD.face.needsUpdate = true; }
+new THREE.TextureLoader().load('assets/driver-face.png', setFace, undefined, () => setFace(fallbackFace()));
+
+function cabSignTex(){
+  return canvasTex(256, 128, (g,w,h)=>{ g.fillStyle='#0d0e10'; roundRect(g,0,0,w,h,14); g.fill();
+    g.fillStyle='#46ff8a'; g.beginPath(); g.arc(30, h/2 - 10, 7, 0, Math.PI*2); g.fill();
+    g.fillStyle='#f5f0e7'; g.font='800 54px "Big Shoulders Display", Impact, sans-serif'; g.textBaseline='middle'; g.fillText('DRIVER', 48, h/2 - 8);
+    g.fillStyle='#9b9184'; g.font='600 17px "Geist Mono", monospace'; g.fillText('CAB · VIEW ONLY', 50, h/2 + 32); });
+}
+function screenTex(kind, tr){
+  return canvasTex(256, 160, (g,w,h)=>{ g.fillStyle='#05070a'; g.fillRect(0,0,w,h);
+    if (kind === 'speed'){
+      g.lineWidth = 10; g.strokeStyle = '#1d3528'; g.beginPath(); g.arc(w/2, h*.64, 58, Math.PI*.8, Math.PI*2.2); g.stroke();
+      g.strokeStyle = '#46ff8a'; g.beginPath(); g.arc(w/2, h*.64, 58, Math.PI*.8, Math.PI*.86); g.stroke();
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#e8fff0'; g.font = '700 44px "Geist Mono", monospace'; g.fillText('0', w/2, h*.6);
+      g.font = '600 14px "Geist Mono", monospace'; g.fillStyle = '#7fae93'; g.fillText('KM/H', w/2, h*.6 + 32);
+    } else {
+      g.font = '700 20px "Geist Mono", monospace'; g.fillStyle = '#ffb547'; g.fillText(tr.id, 14, 30);
+      g.font = '600 15px "Geist Mono", monospace'; g.fillStyle = '#e8e2d6';
+      ['PLATFORM 4', 'DOORS   CLOSED', 'SIGNAL  GREEN', 'BRAKE   APPLIED'].forEach((l, i) => g.fillText(l, 14, 62 + i*24));
+      g.fillStyle = '#46ff8a'; g.beginPath(); g.arc(w - 24, 104, 6, 0, Math.PI*2); g.fill();
+    } });
+}
+
+/* The driver, built in seat space (facing -z like every passenger seat). The chair swivels with him:
+   root.rotation.y = π faces the windscreen, 0 faces back down the train. */
+function buildDriver(){
+  const root = new THREE.Group();
+  const add = (parent, geo, mat, x=0, y=0, z=0) => { const ms = new THREE.Mesh(geo, mat); ms.position.set(x, y, z); parent.add(ms); return ms; };
+  for (const key of ['cushion','back','head','ped']){ const ms = new THREE.Mesh(GEO[key], MD.seat); ms.scale.set(1.15, 1.12, 1.1); root.add(ms); }
+  const body = new THREE.Group(); root.add(body);
+  const thigh = new THREE.CapsuleGeometry(0.075, 0.34, 4, 10).rotateX(Math.PI/2), shin = new THREE.CapsuleGeometry(0.062, 0.34, 4, 10);
+  for (const s of [-1, 1]){
+    add(body, thigh, MD.trousers, s*0.1, 0.66, -0.15);
+    add(body, shin, MD.trousers, s*0.1, 0.36, -0.37);
+    add(body, new THREE.BoxGeometry(0.1, 0.07, 0.24), MD.shoe, s*0.1, 0.04, -0.43);
+  }
+  add(body, new THREE.CapsuleGeometry(0.17, 0.3, 6, 16), MD.uniform, 0, 0.98, 0.1).scale.z = 0.78;
+  add(body, new THREE.CylinderGeometry(0.173, 0.173, 0.045, 24, 1, true), MD.vis, 0, 0.9, 0.1).scale.z = 0.79;
+  add(body, new THREE.CylinderGeometry(0.05, 0.056, 0.13, 12), MD.skin, 0, 1.28, 0.07);
+  const head = new THREE.Group(); head.position.set(0, 1.43, 0.05); body.add(head);
+  const hs = new THREE.Group(); hs.scale.set(1.0, 1.18, 1.04); head.add(hs);
+  add(hs, new THREE.SphereGeometry(0.115, 28, 20), MD.skin);
+  // face photo wrapped on the front (-z) of the head
+  const FL = 1.5; add(hs, new THREE.SphereGeometry(0.1163, 32, 28, 1.5*Math.PI - FL/2, FL, 0.6, 1.85), MD.face);
+  add(hs, new THREE.SphereGeometry(0.1205, 28, 12, 0, Math.PI*2, 0, 0.8), MD.hair);                       // crown
+  add(hs, new THREE.SphereGeometry(0.1185, 24, 16, Math.PI/2 - 1.75, 3.5, 0, 1.95), MD.hair);              // back + sides
+  for (const s of [-1, 1]) add(hs, new THREE.SphereGeometry(0.027, 10, 8), MD.skin, s*0.114, -0.01, 0.012);
+  const cap = new THREE.Group(); cap.position.set(0, 0.098, 0.01); hs.add(cap);
+  add(cap, new THREE.CylinderGeometry(0.13, 0.121, 0.075, 28), MD.cap);
+  add(cap, new THREE.CylinderGeometry(0.1235, 0.1235, 0.02, 28, 1, true), MD.gold, 0, -0.026, 0);
+  add(cap, new THREE.CylinderGeometry(0.105, 0.105, 0.012, 20, 1, false, Math.PI/2, Math.PI), MD.cap, 0, -0.036, -0.075).rotation.x = -0.18;   // peak
+  const mkArm = s => {
+    const sh = new THREE.Group(); sh.position.set(s*0.215, 1.17, 0.09); body.add(sh);
+    add(sh, new THREE.CapsuleGeometry(0.056, 0.2, 4, 10), MD.uniform, 0, -0.14, 0);
+    const el = new THREE.Group(); el.position.set(0, -0.29, 0); sh.add(el);
+    add(el, new THREE.CapsuleGeometry(0.048, 0.2, 4, 10), MD.uniform, 0, -0.13, 0);
+    add(el, new THREE.SphereGeometry(0.046, 12, 10), MD.skin, 0, -0.29, 0);
+    return {sh, el};
+  };
+  const arms = {L: mkArm(-1), R: mkArm(1)};
+  const pick = []; root.traverse(o => { if (o.isMesh) pick.push(o); });
+  return {root, body, head, arms, pick};
+}
+
+function buildCab(g, T, zF, W, H){
+  const add = (geo, mat, x, y, z) => { const ms = new THREE.Mesh(geo, mat); ms.position.set(x, y, z); g.add(ms); return ms; };
+  const own = mat => (mat.userData.own = true, mat);
+  // windscreen wall
+  add(new THREE.BoxGeometry(2*W, 1.05, 0.1), MD.console, 0, 0.525, zF);
+  add(new THREE.BoxGeometry(2*W, H - 2.15, 0.1), MD.console, 0, 2.15 + (H - 2.15)/2, zF);
+  for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.2, 1.1, 0.1), MD.console, s*(W - 0.1), 1.6, zF);
+  add(new THREE.BoxGeometry(0.05, 1.1, 0.08), MD.console, 0, 1.6, zF);
+  add(new THREE.PlaneGeometry(2*W - 0.4, 1.1), MD.cabGlass, 0, 1.6, zF - 0.03);
+  // side windows
+  for (const s of [-1, 1]){ const w = add(new THREE.PlaneGeometry(1.4, 0.62), MI.glass, s*(W - 0.01), 1.3, (0.8 + zF)/2 + 0.3); w.rotation.y = s < 0 ? Math.PI/2 : -Math.PI/2; }
+  // console with a sloped desk, two screens, buttons and the power/brake controller
+  add(new THREE.BoxGeometry(2*W - 0.1, 0.95, 0.8), MD.console, 0, 0.475, zF - 0.45);
+  add(new THREE.BoxGeometry(2*W - 0.1, 0.06, 0.86), MD.consoleTop, 0, 1.0, zF - 0.45).rotation.x = -0.28;
+  [['speed', -0.55], ['info', 0.25]].forEach(([kind, x]) => {
+    const sc = add(new THREE.PlaneGeometry(0.34, 0.21), own(new THREE.MeshBasicMaterial({map: screenTex(kind, T.tr), color: hdr('#ffffff', 1.25)})), x, 1.12, zF - 0.4);
+    sc.rotation.set(0.6, Math.PI, 0);   // tilted up toward the driver
+  });
+  const btn = new THREE.BoxGeometry(0.04, 0.02, 0.04);
+  [[0.62, MD.green], [0.7, LAMP.amber], [0.78, LAMP.red], [0.62, LAMP.soft], [0.7, MD.green]].forEach(([x, mat], i) => add(btn, mat, x, 1.06 + (i > 2 ? 0.02 : 0), zF - 0.62 + (i > 2 ? 0.1 : 0)));
+  add(new THREE.CylinderGeometry(0.014, 0.014, 0.18, 8), MD.gold, -0.12, 1.12, zF - 0.72).rotation.x = -0.4;
+  add(new THREE.SphereGeometry(0.035, 12, 10), LAMP.red, -0.12, 1.2, zF - 0.75);
+  const lamp = new THREE.PointLight('#ffcf9a', 2.4, 5.5, 1.6); lamp.position.set(0, 2.15, zF - 1.6); g.add(lamp);
+  // the night ahead: track, platform lights and a green signal (no fog so it reads through the glass)
+  const nf = c => own(new THREE.MeshBasicMaterial({color: c, fog:false}));
+  add(new THREE.PlaneGeometry(40, 320), nf('#07080b'), 0, -0.6, zF + 160).rotation.x = -Math.PI/2;
+  add(new THREE.PlaneGeometry(700, 260), nf('#0c1020'), 0, 60, zF + 300);
+  for (const s of [-0.72, 0.72]) add(new THREE.BoxGeometry(0.07, 0.04, 320), nf(hdr('#8a90a0', 0.4)), s, -0.56, zF + 160);
+  add(new THREE.BoxGeometry(3, 0.7, 140), nf('#2a2824'), 3.6, -0.25, zF + 70);
+  add(new THREE.BoxGeometry(0.12, 0.01, 140), nf('#b8962e'), 2.2, 0.11, zF + 70);
+  const lampMat = nf(hdr('#ffd9a8', 3)), dot = new THREE.SphereGeometry(0.09, 10, 8);
+  for (let z = zF + 6; z < zF + 140; z += 9) add(dot, lampMat, 3.4, 3.4, z);
+  add(new THREE.BoxGeometry(0.1, 2.4, 0.1), nf('#1a1b1f'), -2.0, 0.6, zF + 44);
+  add(new THREE.SphereGeometry(0.12, 12, 10), nf(hdr('#46ff8a', 5)), -2.0, 1.85, zF + 44);
+  const r = rng(hash(T.tr.id + 'city')), pts = [], cols = [];
+  for (let i = 0; i < 260; i++){ pts.push((r() - .5)*320, r()*36 - 2, zF + 200 + r()*80); const c = new THREE.Color(r() < .75 ? '#ffcf8a' : '#cfe0ff'); cols.push(c.r, c.g, c.b); }
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); pg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  g.add(new THREE.Points(pg, own(new THREE.PointsMaterial({size:2, sizeAttenuation:false, vertexColors:true, fog:false}))));
+  // driver in his seat, facing the windscreen
+  const driver = buildDriver(); driver.root.position.set(CAB.seatX, 0, CAB.seatZ); driver.root.rotation.y = Math.PI; g.add(driver.root);
+  return {driver};
+}
+
 let I = null;
 function disposeGroup(g){ g.traverse(o => { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); if (o.material && o.material.userData?.own){ o.material.map?.dispose(); o.material.dispose(); } }); }
 
 function buildInterior(T){
   if (I){ intScene.remove(I.group); disposeGroup(I.group); }
   const g = new THREE.Group(); intScene.add(g);
-  const W = 1.45, zA = 0.8, zB = T.zEnd - 0.05, len = zA - zB, mid = (zA + zB)/2;
+  const W = 1.45, zA = 0.8, zF = CAB.front, zB = T.zEnd - 0.05, len = zF - zB, mid = (zF + zB)/2;   // zA: cab partition, zF: windscreen
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V3(), sc = new V3(1,1,1);
   carpetTex.repeat.set(3, len/1.3);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(2*W, len), MI.carpet); floor.rotation.x = -Math.PI/2; floor.position.set(0, 0, mid); g.add(floor);
@@ -791,7 +941,7 @@ function buildInterior(T){
   const sh = new THREE.Shape(); sh.absarc(0, yc, R + 0.04, a0, Math.PI - a0, false); sh.absarc(0, yc, R, Math.PI - a0, a0, true);
   const ceil = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, {depth:len, bevelEnabled:false, curveSegments:40}), MI.ceiling); ceil.position.z = zB; g.add(ceil);
   const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.18, len), LAMP.strip); strip.rotation.x = Math.PI/2; strip.position.set(0, 2.535, mid); g.add(strip);
-  const dz = []; for (let z = zA - 0.8; z > zB + 0.4; z -= 1.15) dz.push(z);
+  const dz = []; for (let z = zF - 0.6; z > zB + 0.4; z -= 1.15) dz.push(z);
   const dl = new THREE.InstancedMesh(GEO.downlight, LAMP.strong, dz.length*2); k = 0;
   for (const z of dz) for (const s of [-1,1]){ m.makeTranslation(s*0.72, 2.448, z); dl.setMatrixAt(k++, m); } dl.computeBoundingSphere(); g.add(dl);
   const inSleeper = z => T.coaches.some(c => c.cls === 'Sleeper' && z <= c.z0 && z > c.z1);
@@ -802,22 +952,25 @@ function buildInterior(T){
   const doors = [], pick = [], dots = [];
   const wallBox = (w, h, x, y, z, mat=MI.partition) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), mat); b.position.set(x, y, z); g.add(b); pick.push(b); return b; };
   const H = 2.6, dw = 0.47;
+  // doorway partition with sliding glass doors; back = sign faces -z (seen from the coach side of the cab wall)
+  const partition = (z, signMap, back) => {
+    wallBox(W - dw, H, -(dw + (W - dw)/2), H/2, z); wallBox(W - dw, H, dw + (W - dw)/2, H/2, z); wallBox(2*dw, H - 2.08, 0, 2.08 + (H - 2.08)/2, z);
+    const sd = back ? -1 : 1;
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.02, 0.03), LAMP.soft); lintel.position.set(0, 2.07, z + 0.05*sd); g.add(lintel);
+    const signMat = new THREE.MeshBasicMaterial({map: signMap}); signMat.userData.own = true;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.23), signMat); sign.position.set(0, 2.3, z + 0.045*sd); if (back) sign.rotation.y = Math.PI; g.add(sign);
+    const l = new THREE.Mesh(new THREE.BoxGeometry(dw, 2.06, 0.02), MI.doorGlass), r = l.clone();
+    l.position.set(-dw/2, 1.03, z); r.position.set(dw/2, 1.03, z); g.add(l, r);
+    return {z, l, r};
+  };
   T.coaches.forEach((c, i) => {
     const cl = c.z0 - c.z1;
     const run = new THREE.Mesh(new THREE.PlaneGeometry(c.aisleHalf*2, cl), MI.runner); run.rotation.x = -Math.PI/2; run.position.set(c.aisle, 0.003, (c.z0 + c.z1)/2); g.add(run);
     for (let z = c.z0 - 0.8; z > c.z1 + 0.4; z -= 0.95) for (const s of [-1,1]) dots.push([c.aisle + s*(c.aisleHalf - 0.05), z]);
-    if (i > 0){
-      const z = c.z0;
-      wallBox(W - dw, H, -(dw + (W - dw)/2), H/2, z); wallBox(W - dw, H, dw + (W - dw)/2, H/2, z); wallBox(2*dw, H - 2.08, 0, 2.08 + (H - 2.08)/2, z);
-      const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.02, 0.03), LAMP.soft); lintel.position.set(0, 2.07, z + 0.05); g.add(lintel);
-      const signMat = new THREE.MeshBasicMaterial({map: signTex(c.n)}); signMat.userData.own = true;
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.23), signMat); sign.position.set(0, 2.3, z + 0.045); g.add(sign);
-      const l = new THREE.Mesh(new THREE.BoxGeometry(dw, 2.06, 0.02), MI.doorGlass), r = l.clone();
-      l.position.set(-dw/2, 1.03, z); r.position.set(dw/2, 1.03, z); g.add(l, r);
-      doors.push({z, l, r});
-    }
+    if (i > 0) doors.push(partition(c.z0, signTex(c.n), false));
   });
-  wallBox(2*W, H, 0, H/2, zA);  // behind the start
+  doors.push(partition(zA, cabSignTex(), true));   // into the driver's cab
+  const cab = buildCab(g, T, zF, W, H);
   const endWall = wallBox(2*W, H, 0, H/2, zB);
   const endDoor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.04, 0.02), MI.frame); endDoor.position.set(0, 1.02, zB + 0.05); g.add(endDoor);
   const ad = new THREE.InstancedMesh(GEO.lightDot, LAMP.amber, dots.length);
@@ -936,7 +1089,7 @@ function buildInterior(T){
   bagM.forEach(([pp, ss, col], i) => { m.compose(pp, new THREE.Quaternion(), ss); rackBags.setMatrixAt(i, m); rackBags.setColorAt(i, col); });
   rackBags.computeBoundingSphere(); g.add(rackBags);
 
-  I = {group:g, T, seats, pick, doors, cushIM, backIM, headIM, berthIM, zMax: zA - 1.05, zMin: zB + 2.6};
+  I = {group:g, T, seats, pick, doors, cab, cushIM, backIM, headIM, berthIM, zMax: CAB.stand, zMin: zB + 2.6};
   return I;
 }
 
@@ -965,9 +1118,16 @@ function resize(){ const w = innerWidth, h = innerHeight; renderer.setSize(w, h,
 addEventListener('resize', resize);
 
 const EYE = 1.78, EYE_SL = 1.6, PITCH = -0.2;   // eye drops a little in sleeper coaches so the upper berths aren't at eye level
-const walk = {z:-0.6, tz:-0.6, vel:0, yaw:0, tyaw:0, x:0, eye:EYE, intro:0, dragging:false, walked:0};
+const walk = {z:-0.6, tz:-0.6, vel:0, yaw:0, tyaw:0, pitch:PITCH, tpitch:PITCH, x:0, eye:EYE, intro:0, dragging:false, walked:0};
+let look360 = false;
+const orbit = {on:false, az:0, el:0, dist:20, taz:0, tel:0, tdist:20};   // exterior 360° orbit                                        // on: drags look around freely; off: vertical drag walks
+const fwdSign = () => Math.cos(walk.yaw) >= 0 ? 1 : -1;      // walk along the aisle in whichever direction you face
+const viewZ = () => walk.z - 2.4*Math.cos(walk.yaw);         // roughly where you are looking (for the coach chip)
+const wrapA = a => a - Math.PI*2*Math.round(a/(Math.PI*2));
+const faceTo = a => { walk.tyaw = walk.yaw + wrapA(a - walk.yaw); };
+const inCab = () => walk.z > CAB.zone;
 function coachAt(z){ if (!I) return null; const cs = I.T.coaches; for (const c of cs) if (z <= c.z0 && z > c.z1) return c; return z > 0 ? cs[0] : cs[cs.length-1]; }
-function aisleX(z){ const c = coachAt(z); if (!c) return 0; if (c.z0 - z < 1.1 || z - c.z1 < 0.9) return 0; return c.aisle; }
+function aisleX(z){ if (z > CAB.zone) return -0.12; const c = coachAt(z); if (!c) return 0; if (c.z0 - z < 1.1 || z - c.z1 < 0.9) return 0; return c.aisle; }
 
 /* ============================================================ UI */
 const fadeEl = $('#fade');
@@ -979,6 +1139,7 @@ function setStep(s){
   document.querySelectorAll('.step').forEach(b => { const i = STEPS.indexOf(b.dataset.step); b.disabled = i > S.maxStep || busy || (b.dataset.step === 'ticket' && !S.sels.length);
     if (b.dataset.step === s) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
   $('#journey').hidden = s !== 'journey';
+  $('#resetView').hidden = !(orbit.on && mode === 'ext' && (s === 'journey' || s === 'train'));
   $('#trains').hidden = s !== 'train';
   $('#seatui').hidden = s !== 'seat';
   $('#ticket').hidden = s !== 'ticket';
@@ -1189,10 +1350,12 @@ function renderTrains(){
 function renderCoachRow(){
   const row = $('#coachRow'); row.innerHTML = '';
   if (!S.T) return;
+  const cb = document.createElement('button'); cb.className = 'cbtn cab';
+  cb.innerHTML = `<b>Driver's cab</b><small>View only · meet the driver</small>`; cb.onclick = () => board(-1); row.appendChild(cb);
   S.T.coaches.forEach((c, i) => { const b = document.createElement('button'); b.className = 'cbtn';
     b.innerHTML = `<b>Coach ${c.n}</b><small>${CLS[c.cls].name} · ${c.free} free</small>`;
     b.onclick = () => board(i); row.appendChild(b); });
-  $('#boardHint').textContent = COARSE ? 'Tap a coach on the train to step inside' : 'Click a coach on the train to step inside';
+  $('#boardHint').textContent = COARSE ? 'Drag to look around · tap a coach to step inside' : 'Drag to look around 360° · click a coach to step inside';
 }
 
 async function selectTrain(i, force=false){
@@ -1211,19 +1374,20 @@ async function selectTrain(i, force=false){
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function pickCoach(cx, cy){
   if (!EXT) return null; ndc.set(cx/innerWidth*2 - 1, -(cy/innerHeight)*2 + 1); ray.setFromCamera(ndc, camera);
-  const all = EXT.coaches.flatMap(c => c.pickables.map(o => (o.userData.ci = c.i, o)));
-  const h = ray.intersectObjects(all, false)[0]; return h ? EXT.coaches[h.object.userData.ci] : null;
+  const all = [...EXT.coaches.flatMap(c => c.pickables.map(o => (o.userData.ci = c.i, o))), ...EXT.cab.pickables.map(o => (o.userData.ci = -1, o))];
+  const h = ray.intersectObjects(all, false)[0]; if (!h) return null;
+  return h.object.userData.ci < 0 ? EXT.cab : EXT.coaches[h.object.userData.ci];
 }
 let hoverCoach = null;
 const tip = $('#tip');
-function hideTip(){ tip.hidden = true; if (hoverCoach){ hoverCoach.winMat.color.copy(WIN_BASE); hoverCoach = null; } document.body.dataset.hover = '0'; }
+function hideTip(){ tip.hidden = true; if (hoverCoach){ hoverCoach.winMat?.color.copy(WIN_BASE); hoverCoach = null; } document.body.dataset.hover = '0'; }
 function hoverExt(e){
   if (step !== 'train' || busy){ hideTip(); return; }
   const c = pickCoach(e.clientX, e.clientY);
-  if (c !== hoverCoach){ if (hoverCoach) hoverCoach.winMat.color.copy(WIN_BASE); hoverCoach = c; if (c) c.winMat.color.copy(WIN_HOT); }
+  if (c !== hoverCoach){ hoverCoach?.winMat?.color.copy(WIN_BASE); hoverCoach = c; c?.winMat?.color.copy(WIN_HOT); }
   document.body.dataset.hover = c ? '1' : '0';
   if (!c){ tip.hidden = true; return; }
-  tip.hidden = false; tip.innerHTML = `<b>Coach ${c.n}</b><span>${CLS[c.cls].name} · ${c.free} of ${c.total} ${c.cls === 'Sleeper' ? 'berths' : 'seats'} free · click to board</span>`;
+  tip.hidden = false; tip.innerHTML = c.cab ? `<b>Driver's cab</b><span>View only · click to step in and meet the driver</span>` : `<b>Coach ${c.n}</b><span>${CLS[c.cls].name} · ${c.free} of ${c.total} ${c.cls === 'Sleeper' ? 'berths' : 'seats'} free · click to board</span>`;
   const x = clamp(e.clientX + 16, 8, innerWidth - tip.offsetWidth - 8), y = clamp(e.clientY + 18, 8, innerHeight - tip.offsetHeight - 8);
   tip.style.transform = `translate(${x}px, ${y}px)`;
 }
@@ -1235,8 +1399,8 @@ async function camTo(pos, look, ms){
 
 async function board(ci){
   if (busy || !EXT || mode !== 'ext') return; busy = true; hideTip(); setStep('train');
-  $('#trains').hidden = true; $('#journey').hidden = true;
-  const ec = EXT.coaches[ci], dx = EXT.group.position.x + ec.doorX;
+  $('#trains').hidden = true; $('#journey').hidden = true; orbit.on = false; $('#resetView').hidden = true;
+  const ec = EXT.coaches[Math.max(0, ci)], dx = EXT.group.position.x + ec.doorX;
   await camTo(new V3(dx - 0.6, 2.5, 7.0), new V3(dx, 2.15, 0), 1500);
   await tween(750, p => ec.door.position.x = ec.doorBaseX + p*1.06);
   const toP = new V3(dx, 2.25, 1.9), toL = new V3(dx, 2.2, -3);
@@ -1250,19 +1414,28 @@ async function board(ci){
 function enterInterior(ci){
   if (!I || I.T !== S.T) buildInterior(S.T);
   mode = 'int'; renderPass.scene = intScene; camera.clearViewOffset(); viewShift = viewShiftY = 0; applyFov();
-  const c = S.T.coaches[ci];
-  walk.z = walk.tz = clamp(c.z0 - 0.7, I.zMin, I.zMax); walk.x = 0; walk.vel = 0; walk.yaw = walk.tyaw = 0; walk.intro = 1.25; walk.eye = c.cls === 'Sleeper' ? EYE_SL : EYE;
+  const c = S.T.coaches[Math.max(0, ci)];
+  if (ci < 0){ walk.z = 1.2; walk.tz = CAB.stand; walk.yaw = walk.tyaw = Math.PI; }        // step into the cab, facing the driver
+  else { walk.z = walk.tz = clamp(c.z0 - 0.7, I.zMin, I.zMax); walk.yaw = walk.tyaw = 0; }
+  walk.x = 0; walk.vel = 0; walk.pitch = walk.tpitch = PITCH; walk.intro = 1.25; walk.eye = c.cls === 'Sleeper' ? EYE_SL : EYE;
   tween(1300, p => walk.intro = 1.25*(1 - p));
   S.sels = S.sels.map(s => S.T.seats.find(x => x.id === s.id)).filter(s => s && !s.taken); renderSel();
   lastCoachN = -1; setStep('seat'); updateSeatUI();
-  $('#hint').style.opacity = 1; walk.walked = 0;
-  $('#hintText').textContent = COARSE ? 'Drag down to walk forward' : 'Scroll or drag down to walk forward';
+  setHint();
 }
+function setHint(){
+  $('#hint').style.opacity = 1; walk.walked = 0;
+  $('#hintText').textContent = look360 ? (COARSE ? 'Drag to look around 360°' : 'Drag to look around 360° · scroll to walk')
+                                       : (COARSE ? 'Drag down to walk · sideways to turn around' : 'Scroll or drag down to walk · drag sideways to turn');
+}
+function toggleLook(){ look360 = !look360; if (!look360) walk.tpitch = PITCH; setHint(); updateSeatUI(); }
+function goCab(){ walk.tz = CAB.stand; walk.vel = 0; faceTo(Math.PI); walk.tpitch = PITCH; }
+function goSeats(){ walk.tz = clamp(-0.7, I.zMin, I.zMax); walk.vel = 0; faceTo(0); walk.tpitch = PITCH; }
 
 async function exitInterior(){
   if (busy) return; busy = true;
   await fade(1, 350);
-  mode = 'ext'; renderPass.scene = extScene; applyFov(); $('#tag').hidden = true;
+  mode = 'ext'; renderPass.scene = extScene; applyFov(); $('#tag').hidden = true; $('#say').hidden = true; stopOrbit();
   setStep('train');
   const v = extView(); extCam.pos.copy(v.pos).add(new V3(-3, 1, 3)); extCam.look.copy(v.look); extCam.auto = true;
   await fade(0, 500); busy = false; setStep('train');
@@ -1277,11 +1450,13 @@ const seatPrice = s => { const t = trainFor(S.T.tr); return s.cls === 'First' ? 
 const seatTag = s => s.plate || s.label;                       // "9C" or "12 UB"
 const seatWord = s => s.berth ? 'berth' : 'seat';
 const seatRef = s => `C${s.coach} · ${seatTag(s)}`;   // "C4 · 12 UB"
+const ICON_360 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3v3M12 18v3"/><path d="M17 16l2 .5-1 1.8"/></svg>';
 const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>';
 function updateSeatUI(){
-  if (!I) return; const c = coachAt(walk.z - 2.4); lastCoachN = c.n;
+  if (!I) return; const cab = inCab(), c = coachAt(viewZ()); lastCoachN = cab ? 'cab' : c.n;
   const sels = S.sels, n = sels.length, total = sels.reduce((a, s) => a + seatPrice(s), 0);
-  let h = `<button class="chip" id="coachChip" aria-haspopup="menu">${ICON_COACH}Coach ${c.n}</button>`;
+  let h = cab ? `<span class="chip">${ICON_COACH}Driver's cab</span><span class="chip">View only</span>`
+              : `<button class="chip" id="coachChip" aria-haspopup="menu">${ICON_COACH}Coach ${c.n}</button>`;
   h += sels.map(s => `<button class="chip seat rm" data-id="${s.id}" aria-label="Remove ${seatWord(s)} ${s.coach}-${seatTag(s)}">${n > 1 || s.coach !== c.n ? seatRef(s) : seatTag(s)}${ICON_X}</button>`).join('');
   if (n === 1){
     const s = sels[0];
@@ -1290,8 +1465,11 @@ function updateSeatUI(){
     if (s.rear) h += `<span class="chip">Rear-facing</span>`;
   }
   if (n) h += `<span class="chip tot">${inr(total)}</span>`;
+  h += `<button class="chip toggle" id="lookChip" aria-pressed="${look360}">${ICON_360}360°</button>`;
+  h += `<button class="chip go" id="cabChip">${cab ? 'Back to seats' : "Driver's cab"}</button>`;
   chipsEl.innerHTML = h;
-  $('#coachChip').onclick = toggleCoachMenu;
+  const cc = $('#coachChip'); if (cc) cc.onclick = toggleCoachMenu;
+  $('#lookChip').onclick = toggleLook; $('#cabChip').onclick = cab ? goSeats : goCab;
   chipsEl.querySelectorAll('.rm').forEach(b => b.onclick = () => { const s = S.sels.find(x => x.id === b.dataset.id); if (s) toggleSeat(s); });
   cta.disabled = !n;
   const word = n > 1 ? (sels.every(s => s.berth) ? 'berths' : sels.some(s => s.berth) ? 'places' : 'seats') : '';
@@ -1301,7 +1479,7 @@ function updateSeatUI(){
 function toggleCoachMenu(){
   const menu = $('#coachMenu');
   if (!menu.hidden){ menu.hidden = true; return; }
-  const cur = coachAt(walk.z - 2.4);
+  const cur = coachAt(viewZ());
   menu.innerHTML = S.T.coaches.map(c => `<button role="menuitem" data-n="${c.n}" aria-current="${c === cur}"><span>Coach ${c.n} · ${CLS[c.cls].name}</span><small>${c.free} free</small></button>`).join('');
   menu.querySelectorAll('button').forEach(b => b.onclick = () => { const c = S.T.coaches[+b.dataset.n - 1]; walk.tz = clamp(c.z0 - 0.7, I.zMin, I.zMax); walk.vel = 0; menu.hidden = true; noteWalked(); });
   menu.hidden = false;
@@ -1356,7 +1534,47 @@ function toggleSeat(s){
   }
   setHoverSeat(null); renderSel(); updateSeatUI();
 }
+// the driver: click him and he swivels round, waves and says hi
+const sayEl = $('#say'), drv = {turn:0, wave:0, talk:false, busy:false}, sayP = new V3();
+function pickDriver(cx, cy){
+  if (!I?.cab) return false;
+  ndc.set(cx/innerWidth*2 - 1, -(cy/innerHeight)*2 + 1); ray.setFromCamera(ndc, camera);
+  const h = ray.intersectObjects(I.cab.driver.pick, false)[0]; if (!h || h.distance > 7) return false;
+  const o = ray.intersectObjects(I.pick, false)[0]; return !o || o.distance > h.distance;
+}
+async function sayHi(){
+  if (drv.busy) return; drv.busy = true;
+  $('#sayText').textContent = `Hi! 👋 I'm ${DRIVER_NAME}, your driver tonight.`;
+  $('#saySub').textContent = `${S.T.tr.name} · ${S.T.tr.id}`;
+  await Promise.all([tween(1100, p => drv.turn = p), wait(450).then(() => tween(650, p => drv.wave = p))]);
+  drv.talk = true; await wait(2800); drv.talk = false;
+  await tween(500, p => drv.wave = 1 - p);
+  await tween(1100, p => drv.turn = 1 - p);
+  drv.busy = false;
+}
+function updateDriver(t){
+  const d = I.cab.driver, R = d.arms.R, L = d.arms.L, w = drv.wave, k = drv.turn;
+  d.root.rotation.y = Math.PI*(1 - k);                                     // π: facing the windscreen, 0: facing you
+  d.head.rotation.set(0.14*k, (REDUCED ? 0 : Math.sin(t*0.35)*0.22)*(1 - k), 0);
+  L.sh.rotation.set(lerp(0.75, 0.25, k), 0, 0); L.el.rotation.set(lerp(0.85, 0.35, k), 0, 0);   // turned round: left hand drops to his lap
+  R.sh.rotation.set(lerp(lerp(0.75, 0.25, k), -0.3, w), 0, lerp(0, 2.5, w));
+  R.el.rotation.set(lerp(0.85, 0.1, w), 0, w*(0.35 + (REDUCED ? 0 : Math.sin(t*9)*0.45)));
+  d.body.position.y = REDUCED ? 0 : Math.sin(t*1.6)*0.004;
+  let vis = drv.talk && step === 'seat';
+  if (vis){
+    d.head.getWorldPosition(sayP); sayP.y += 0.3;
+    const dist = sayP.distanceTo(camera.position); sayP.project(camera);
+    vis = sayP.z < 1 && Math.abs(sayP.x) < 1.1 && Math.abs(sayP.y) < 1.1;
+    if (vis){   // keep the bubble on screen: clamp its centre by its scaled half-width
+      const k = clamp(1.6/dist, 0.6, 1.1), half = sayEl.offsetWidth*k/2 + 12;
+      const x = clamp((sayP.x + 1)/2*innerWidth, half, innerWidth - half), y = Math.max((1 - sayP.y)/2*innerHeight, sayEl.offsetHeight*k + 60);
+      sayEl.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%) scale(${k})`;
+    }
+  }
+  sayEl.hidden = !vis;
+}
 function clickSeat(cx, cy){
+  if (pickDriver(cx, cy)){ sayHi(); return; }
   const s = pickSeat(cx, cy); if (!s) return;
   if (s.mine){ toast(`${ICON_PERSON}You already booked ${seatTag(s)}`); return; }
   if (s.taken){ toast(`${ICON_PERSON}${seatTag(s)} is taken`); return; }
@@ -1465,13 +1683,19 @@ canvas.addEventListener('pointermove', e => {
     const dx = e.clientX - pd.lx, dy = e.clientY - pd.ly, now = performance.now(), dt = Math.max(8, now - pd.lt)/1000;
     pd.moved += Math.abs(dx) + Math.abs(dy);
     if (mode === 'int' && step === 'seat' && pd.moved > 6){
-      const dz = -dy*WALK_K; walk.tz = clamp(walk.tz + dz, I.zMin, I.zMax); walk.vel = lerp(walk.vel, dz/dt, 0.5);
-      walk.tyaw = clamp(walk.tyaw + dx*0.0035, -0.65, 0.65); if (Math.abs(dz) > 0.02) noteWalked();
+      walk.tyaw += dx*0.005;                                                   // full 360° turn
+      if (look360) walk.tpitch = clamp(walk.tpitch + dy*0.004, -1.25, 1.1);
+      else { const dz = -dy*WALK_K*fwdSign(); walk.tz = clamp(walk.tz + dz, I.zMin, I.zMax); walk.vel = lerp(walk.vel, dz/dt, 0.5); if (Math.abs(dz) > 0.02) noteWalked(); }
       setHoverSeat(null);
+    } else if (mode === 'ext' && (step === 'journey' || step === 'train') && !busy && pd.moved > 6){
+      if (!orbit.on) startOrbit();
+      orbit.taz -= dx*0.006; orbit.tel = clamp(orbit.tel + dy*0.004, 0.03, 1.3);
+      hideTip(); document.body.dataset.drag = '1';
     }
     pd.lx = e.clientX; pd.ly = e.clientY; pd.lt = now;
   } else if (e.pointerType === 'mouse'){
     if (mode === 'ext') hoverExt(e);
+    else if (step === 'seat' && I && pickDriver(e.clientX, e.clientY)){ setHoverSeat(null); document.body.dataset.hover = '1'; }
     else if (step === 'seat' && I){ const s = pickSeat(e.clientX, e.clientY); setHoverSeat(s && !s.taken && !S.sels.includes(s) ? s : null); if (s && s.taken) document.body.dataset.hover = '0'; }
   }
 });
@@ -1491,24 +1715,41 @@ canvas.addEventListener('pointerup', e => endPointer(e, false));
 canvas.addEventListener('pointercancel', e => endPointer(e, true));
 canvas.addEventListener('pointerleave', e => { if (!pd && mode === 'ext') hideTip(); });
 canvas.addEventListener('wheel', e => {
+  if (mode === 'ext' && (step === 'journey' || step === 'train') && !busy){
+    e.preventDefault(); if (!orbit.on) startOrbit(); orbit.tdist = clamp(orbit.tdist*Math.exp(e.deltaY*0.001), 6, 70); return;
+  }
   if (mode !== 'int' || step !== 'seat') return; e.preventDefault();
-  walk.tz = clamp(walk.tz - e.deltaY*0.006, I.zMin, I.zMax); noteWalked();
+  walk.tz = clamp(walk.tz - e.deltaY*0.006*fwdSign(), I.zMin, I.zMax); noteWalked();
 }, {passive:false});
 addEventListener('keydown', e => {
   if (e.target.matches('input, select, textarea')) return;
   if (e.key === 'Escape'){ $('#closeBtn').click(); return; }
   if (mode !== 'int' || step !== 'seat') return;
-  if (e.key === 'ArrowUp' || e.key === 'w'){ walk.tz = clamp(walk.tz - 0.95, I.zMin, I.zMax); noteWalked(); e.preventDefault(); }
-  if (e.key === 'ArrowDown' || e.key === 's'){ walk.tz = clamp(walk.tz + 0.95, I.zMin, I.zMax); e.preventDefault(); }
-  if (e.key === 'ArrowLeft' || e.key === 'a'){ walk.tyaw = clamp(walk.tyaw + 0.2, -0.65, 0.65); }
-  if (e.key === 'ArrowRight' || e.key === 'd'){ walk.tyaw = clamp(walk.tyaw - 0.2, -0.65, 0.65); }
+  if (e.key === 'ArrowUp' || e.key === 'w'){ walk.tz = clamp(walk.tz - 0.95*fwdSign(), I.zMin, I.zMax); noteWalked(); e.preventDefault(); }
+  if (e.key === 'ArrowDown' || e.key === 's'){ walk.tz = clamp(walk.tz + 0.95*fwdSign(), I.zMin, I.zMax); e.preventDefault(); }
+  if (e.key === 'ArrowLeft' || e.key === 'a'){ walk.tyaw += 0.3; e.preventDefault(); }
+  if (e.key === 'ArrowRight' || e.key === 'd'){ walk.tyaw -= 0.3; e.preventDefault(); }
+  if (e.key === 'v'){ toggleLook(); }
   if (e.key === 'Enter' && S.sels.length) openTicket();
 });
+
+// exterior orbit: drag (or scroll) on the station view to circle the train (state declared with walk)
+function startOrbit(){
+  const d = new V3().subVectors(extCam.pos, extCam.look);
+  orbit.dist = orbit.tdist = d.length(); orbit.el = orbit.tel = Math.asin(clamp(d.y/orbit.dist, -1, 1)); orbit.az = orbit.taz = Math.atan2(d.x, d.z);
+  orbit.on = true; extCam.auto = false; $('#resetView').hidden = false;
+}
+function stopOrbit(){ orbit.on = false; extCam.auto = true; $('#resetView').hidden = true; }
+$('#resetView').onclick = stopOrbit;
 
 /* ============================================================ loop */
 const clock = new THREE.Clock(), tmpV = new V3(), tagP = new V3();
 function updateExterior(dt, t){
-  if (extCam.auto){
+  if (orbit.on){
+    orbit.az = damp(orbit.az, orbit.taz, 8, dt); orbit.el = damp(orbit.el, orbit.tel, 8, dt); orbit.dist = damp(orbit.dist, orbit.tdist, 8, dt);
+    const ce = Math.cos(orbit.el);
+    extCam.pos.set(extCam.look.x + Math.sin(orbit.az)*ce*orbit.dist, Math.max(0.7, extCam.look.y + Math.sin(orbit.el)*orbit.dist), extCam.look.z + Math.cos(orbit.az)*ce*orbit.dist);
+  } else if (extCam.auto){
     const v = extView(), sway = REDUCED ? 0 : Math.sin(t*0.11)*1.4;
     v.pos.x += sway; v.pos.y += REDUCED ? 0 : Math.sin(t*0.07)*0.3;
     extCam.pos.x = damp(extCam.pos.x, v.pos.x, 1.6, dt); extCam.pos.y = damp(extCam.pos.y, v.pos.y, 1.6, dt); extCam.pos.z = damp(extCam.pos.z, v.pos.z, 1.6, dt);
@@ -1529,13 +1770,16 @@ function updateInterior(dt, t){
   walk.x = damp(walk.x, aisleX(walk.z), 3, dt);
   walk.yaw = damp(walk.yaw, walk.tyaw, 6, dt);
   walk.eye = damp(walk.eye, coachAt(walk.z)?.cls === 'Sleeper' ? EYE_SL : EYE, 2.5, dt);
-  const yaw = walk.yaw + walk.intro;
+  walk.pitch = damp(walk.pitch, walk.tpitch, 6, dt);
+  const yaw = walk.yaw + walk.intro, cp = Math.cos(walk.pitch);
   camera.position.set(walk.x, walk.eye, walk.z);
-  tmpV.set(walk.x - Math.sin(yaw)*10, walk.eye + Math.tan(PITCH)*10, walk.z - Math.cos(yaw)*10); camera.lookAt(tmpV);
-  camLight.position.set(walk.x, 2.25, walk.z - 1.6);
+  tmpV.set(walk.x - Math.sin(yaw)*cp*10, walk.eye + Math.sin(walk.pitch)*10, walk.z - Math.cos(yaw)*cp*10); camera.lookAt(tmpV);
+  camLight.position.set(walk.x - Math.sin(yaw)*1.6, 2.25, walk.z - Math.cos(yaw)*1.6);
+  if (I.cab) updateDriver(t);
   for (const d of I.doors){ const o = easeIO(clamp(1 - (Math.abs(walk.z - d.z) - 1.4)/2.4, 0, 1)); d.l.position.x = -0.235 - o*0.46; d.r.position.x = 0.235 + o*0.46; }
   if (S.sels.length){ MI.hi.emissiveIntensity = 0.38 + (REDUCED ? 0 : Math.sin(t*2.6)*0.08); }
-  const c = coachAt(walk.z - 2.4); if (c && c.n !== lastCoachN && step === 'seat') updateSeatUI();
+  const zone = inCab() ? 'cab' : coachAt(viewZ())?.n;
+  if (zone !== lastCoachN && step === 'seat'){ if (zone === 'cab') toast(`${ICON_PERSON}Driver's cab · tap the driver to say hi`); updateSeatUI(); }
   // a floating "reserved" card over each selected seat
   S.sels.forEach((s, i) => {
     const el = tagAt(i);
