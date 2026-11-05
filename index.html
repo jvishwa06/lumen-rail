@@ -246,6 +246,8 @@ form{display:grid;gap:10px}
 .stamp{justify-self:center;transform:rotate(-6deg);border:2px solid #2f6b45;color:#2f6b45;border-radius:8px;padding:4px 10px;font:800 18px/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;opacity:.85}
 
 /* ---------- 360° look + driver's cab */
+.chip.toggle{cursor:pointer}
+.chip.toggle[aria-pressed="true"]{background:var(--ink);color:var(--paper-ink)}
 .chip.go{cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,212,154,.45)}
 .view-reset{position:fixed;z-index:16;right:max(16px, env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 62px);height:32px;padding:0 14px;border-radius:999px;border:1px solid var(--line);
   background:var(--pill);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
@@ -903,7 +905,6 @@ function buildInterior(T){
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V3(), sc = new V3(1,1,1);
   carpetTex.repeat.set(3, len/1.3);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(2*W, len), MI.carpet); floor.rotation.x = -Math.PI/2; floor.position.set(0, 0, mid); g.add(floor);
-  floor.userData.floor = true; const floors = [floor];
   // window positions: every 1.9 m down the train, plus one each side in the cab
   const wz = []; for (let z = zA - 1.4; z > zB + 0.8; z -= 1.9) wz.push(z);
   wz.push((zA + zF)/2 + 0.3);
@@ -968,7 +969,7 @@ function buildInterior(T){
   };
   T.coaches.forEach((c, i) => {
     const cl = c.z0 - c.z1;
-    const run = new THREE.Mesh(new THREE.PlaneGeometry(c.aisleHalf*2, cl), MI.runner); run.rotation.x = -Math.PI/2; run.position.set(c.aisle, 0.003, (c.z0 + c.z1)/2); g.add(run); run.userData.floor = true; floors.push(run);
+    const run = new THREE.Mesh(new THREE.PlaneGeometry(c.aisleHalf*2, cl), MI.runner); run.rotation.x = -Math.PI/2; run.position.set(c.aisle, 0.003, (c.z0 + c.z1)/2); g.add(run);
     for (let z = c.z0 - 0.8; z > c.z1 + 0.4; z -= 0.95) for (const s of [-1,1]) dots.push([c.aisle + s*(c.aisleHalf - 0.05), z]);
     if (i > 0) doors.push(partition(c.z0, signTex(c.n), false));
   });
@@ -1092,7 +1093,7 @@ function buildInterior(T){
   bagM.forEach(([pp, ss, col], i) => { m.compose(pp, new THREE.Quaternion(), ss); rackBags.setMatrixAt(i, m); rackBags.setColorAt(i, col); });
   rackBags.computeBoundingSphere(); g.add(rackBags);
 
-  I = {group:g, T, seats, pick, doors, cab, floor: floors, cushIM, backIM, headIM, berthIM, zMax: CAB.stand, zMin: zB + 2.6};
+  I = {group:g, T, seats, pick, doors, cab, cushIM, backIM, headIM, berthIM, zMax: CAB.stand, zMin: zB + 2.6};
   return I;
 }
 
@@ -1133,6 +1134,7 @@ addEventListener('resize', resize);
 
 const EYE = 1.78, EYE_SL = 1.6, PITCH = -0.2;   // eye drops a little in sleeper coaches so the upper berths aren't at eye level
 const walk = {z:-0.6, tz:-0.6, vel:0, yaw:0, tyaw:0, pitch:PITCH, tpitch:PITCH, x:0, eye:EYE, intro:0, dragging:false, walked:0};
+let look360 = false;                                        // on: drags look around freely; off: vertical drag walks
 const orbit = {on:false, az:0, el:0, dist:20, taz:0, tel:0, tdist:20};   // exterior 360° orbit
 const fwdSign = () => Math.cos(walk.yaw) >= 0 ? 1 : -1;      // walk along the aisle in whichever direction you face
 const viewZ = () => walk.z - 2.4*Math.cos(walk.yaw);         // roughly where you are looking (for the coach chip)
@@ -1438,8 +1440,10 @@ function enterInterior(ci){
 }
 function setHint(){
   $('#hint').style.opacity = 1; walk.walked = 0;
-  $('#hintText').textContent = COARSE ? 'Drag to look around 360° · tap the floor to walk' : 'Drag to look around 360° · scroll or click the floor to walk';
+  $('#hintText').textContent = look360 ? (COARSE ? 'Drag to look around 360°' : 'Drag to look around 360° · scroll to walk')
+                                       : (COARSE ? 'Drag down to walk · sideways to turn around' : 'Scroll or drag down to walk · drag sideways to turn');
 }
+function toggleLook(){ look360 = !look360; if (!look360) walk.tpitch = PITCH; setHint(); updateSeatUI(); }
 function goCab(){ walk.tz = CAB.stand; walk.vel = 0; faceTo(Math.PI); walk.tpitch = PITCH; }
 function goSeats(){ walk.tz = clamp(-0.7, I.zMin, I.zMax); walk.vel = 0; faceTo(0); walk.tpitch = PITCH; }
 
@@ -1461,6 +1465,7 @@ const seatPrice = s => { const t = trainFor(S.T.tr); return s.cls === 'First' ? 
 const seatTag = s => s.plate || s.label;                       // "9C" or "12 UB"
 const seatWord = s => s.berth ? 'berth' : 'seat';
 const seatRef = s => `C${s.coach} · ${seatTag(s)}`;   // "C4 · 12 UB"
+const ICON_360 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3v3M12 18v3"/><path d="M17 16l2 .5-1 1.8"/></svg>';
 const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>';
 function updateSeatUI(){
   if (!I) return; const cab = inCab(), c = coachAt(viewZ()); lastCoachN = cab ? 'cab' : c.n;
@@ -1475,10 +1480,11 @@ function updateSeatUI(){
     if (s.rear) h += `<span class="chip">Rear-facing</span>`;
   }
   if (n) h += `<span class="chip tot">${inr(total)}</span>`;
+  h += `<button class="chip toggle" id="lookChip" aria-pressed="${look360}">${ICON_360}360°</button>`;
   h += `<button class="chip go" id="cabChip">${cab ? 'Back to seats' : "Driver's cab"}</button>`;
   chipsEl.innerHTML = h;
   const cc = $('#coachChip'); if (cc) cc.onclick = toggleCoachMenu;
-  $('#cabChip').onclick = cab ? goSeats : goCab;
+  $('#lookChip').onclick = toggleLook; $('#cabChip').onclick = cab ? goSeats : goCab;
   chipsEl.querySelectorAll('.rm').forEach(b => b.onclick = () => { const s = S.sels.find(x => x.id === b.dataset.id); if (s) toggleSeat(s); });
   cta.disabled = !n;
   const word = n > 1 ? (sels.every(s => s.berth) ? 'berths' : sels.some(s => s.berth) ? 'places' : 'seats') : '';
@@ -1582,15 +1588,9 @@ function updateDriver(t){
   }
   sayEl.hidden = !vis;
 }
-// click / tap the floor to glide there along the aisle
-function walkTo(cx, cy){
-  ndc.set(cx/innerWidth*2 - 1, -(cy/innerHeight)*2 + 1); ray.setFromCamera(ndc, camera);
-  const h = ray.intersectObjects([...I.floor, ...I.pick], false)[0];
-  if (h?.object.userData.floor){ walk.tz = clamp(h.point.z, I.zMin, I.zMax); walk.vel = 0; noteWalked(); }
-}
 function clickSeat(cx, cy){
   if (pickDriver(cx, cy)){ sayHi(); return; }
-  const s = pickSeat(cx, cy); if (!s){ walkTo(cx, cy); return; }
+  const s = pickSeat(cx, cy); if (!s) return;
   if (s.mine){ toast(`${ICON_PERSON}You already booked ${seatTag(s)}`); return; }
   if (s.taken){ toast(`${ICON_PERSON}${seatTag(s)} is taken`); return; }
   toggleSeat(s);
@@ -1698,7 +1698,9 @@ canvas.addEventListener('pointermove', e => {
     const dx = e.clientX - pd.lx, dy = e.clientY - pd.ly, now = performance.now(), dt = Math.max(8, now - pd.lt)/1000;
     pd.moved += Math.abs(dx) + Math.abs(dy);
     if (mode === 'int' && step === 'seat' && pd.moved > 6){
-      walk.tyaw += dx*0.005; walk.tpitch = clamp(walk.tpitch + dy*0.004, -1.25, 1.1);   // drag looks around a full 360°
+      walk.tyaw += dx*0.005;                                                   // full 360° turn
+      if (look360) walk.tpitch = clamp(walk.tpitch + dy*0.004, -1.25, 1.1);
+      else { const dz = -dy*WALK_K*fwdSign(); walk.tz = clamp(walk.tz + dz, I.zMin, I.zMax); walk.vel = lerp(walk.vel, dz/dt, 0.5); if (Math.abs(dz) > 0.02) noteWalked(); }
       setHoverSeat(null);
     } else if (mode === 'ext' && (step === 'journey' || step === 'train') && !busy && pd.moved > 6){
       if (!orbit.on) startOrbit();
@@ -1742,6 +1744,7 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 's'){ walk.tz = clamp(walk.tz + 0.95*fwdSign(), I.zMin, I.zMax); e.preventDefault(); }
   if (e.key === 'ArrowLeft' || e.key === 'a'){ walk.tyaw += 0.3; e.preventDefault(); }
   if (e.key === 'ArrowRight' || e.key === 'd'){ walk.tyaw -= 0.3; e.preventDefault(); }
+  if (e.key === 'v'){ toggleLook(); }
   if (e.key === 'Enter' && S.sels.length) openTicket();
 });
 
