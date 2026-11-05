@@ -246,8 +246,6 @@ form{display:grid;gap:10px}
 .stamp{justify-self:center;transform:rotate(-6deg);border:2px solid #2f6b45;color:#2f6b45;border-radius:8px;padding:4px 10px;font:800 18px/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;opacity:.85}
 
 /* ---------- 360° look + driver's cab */
-.chip.toggle{cursor:pointer}
-.chip.toggle[aria-pressed="true"]{background:var(--ink);color:var(--paper-ink)}
 .chip.go{cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,212,154,.45)}
 .view-reset{position:fixed;z-index:16;right:max(16px, env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 62px);height:32px;padding:0 14px;border-radius:999px;border:1px solid var(--line);
   background:var(--pill);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
@@ -541,6 +539,9 @@ MX.concrete.map.repeat.set(60, 3);
   const sp = []; for (let i=0;i<500;i++){ const a = r()*Math.PI*2, el = 0.15 + r()*1.2, R = 400; sp.push(Math.cos(a)*Math.cos(el)*R + 60, Math.sin(el)*R*0.6 + 30, Math.sin(a)*Math.cos(el)*R); }
   const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
   g.add(new THREE.Points(sg, new THREE.PointsMaterial({color:'#cfd8ff', size:1.6, sizeAttenuation:false, fog:false, transparent:true, opacity:.75})));
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.2, 0.12), MX.dark); post.position.set(-42, 2.1, -2.3); g.add(post);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.7, 0.3), MX.dark); head.position.set(-42, 4.3, -2.3); g.add(head);
+  const sig = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), new THREE.MeshBasicMaterial({color: hdr('#46ff8a', 5)})); sig.position.set(-42.16, 4.45, -2.3); g.add(sig);
 })();
 
 /* departure board */
@@ -697,7 +698,7 @@ function noseGeo(part){
 
 /* ============================================================ INTERIOR SCENE */
 const intScene = new THREE.Scene();
-intScene.background = new THREE.Color('#110e0c');
+intScene.background = null;   // the station behind the windows is drawn first by the exterior pass
 intScene.fog = new THREE.Fog('#110e0c', 4, 30);
 intScene.add(new THREE.HemisphereLight('#ffe6c4', '#2a2018', 0.4));
 const iDir = new THREE.DirectionalLight('#ffe2bb', 0.3); iDir.position.set(0.6, 6, 2); intScene.add(iDir);
@@ -712,7 +713,7 @@ const MI = {
   runner: new THREE.MeshStandardMaterial({color:'#2e2721', roughness:1}),
   wall: new THREE.MeshStandardMaterial({color:'#3a332d', roughness:.85, side:THREE.DoubleSide}),
   wallUp: new THREE.MeshStandardMaterial({color:'#3a332c', roughness:.8, side:THREE.DoubleSide}),
-  glass: new THREE.MeshStandardMaterial({color:'#05070c', roughness:.1, metalness:.5, emissive:'#0d1828', emissiveIntensity:1}),
+  glass: new THREE.MeshStandardMaterial({color:'#b4c8dc', roughness:.05, metalness:.1, transparent:true, opacity:.07, depthWrite:false, side:THREE.DoubleSide}),   // clear pane
   frame: new THREE.MeshStandardMaterial({color:'#5a5148', roughness:.6}),
   ceiling: new THREE.MeshStandardMaterial({color:'#3b342d', roughness:.9, side:THREE.DoubleSide}),
   rack: new THREE.MeshStandardMaterial({color:'#2b2622', roughness:.55, metalness:.35}),
@@ -875,8 +876,6 @@ function buildCab(g, T, zF, W, H){
   for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.2, 1.1, 0.1), MD.console, s*(W - 0.1), 1.6, zF);
   add(new THREE.BoxGeometry(0.05, 1.1, 0.08), MD.console, 0, 1.6, zF);
   add(new THREE.PlaneGeometry(2*W - 0.4, 1.1), MD.cabGlass, 0, 1.6, zF - 0.03);
-  // side windows
-  for (const s of [-1, 1]){ const w = add(new THREE.PlaneGeometry(1.4, 0.62), MI.glass, s*(W - 0.01), 1.3, (0.8 + zF)/2 + 0.3); w.rotation.y = s < 0 ? Math.PI/2 : -Math.PI/2; }
   // console with a sloped desk, two screens, buttons and the power/brake controller
   add(new THREE.BoxGeometry(2*W - 0.1, 0.95, 0.8), MD.console, 0, 0.475, zF - 0.45);
   add(new THREE.BoxGeometry(2*W - 0.1, 0.06, 0.86), MD.consoleTop, 0, 1.0, zF - 0.45).rotation.x = -0.28;
@@ -889,21 +888,6 @@ function buildCab(g, T, zF, W, H){
   add(new THREE.CylinderGeometry(0.014, 0.014, 0.18, 8), MD.gold, -0.12, 1.12, zF - 0.72).rotation.x = -0.4;
   add(new THREE.SphereGeometry(0.035, 12, 10), LAMP.red, -0.12, 1.2, zF - 0.75);
   const lamp = new THREE.PointLight('#ffcf9a', 2.4, 5.5, 1.6); lamp.position.set(0, 2.15, zF - 1.6); g.add(lamp);
-  // the night ahead: track, platform lights and a green signal (no fog so it reads through the glass)
-  const nf = c => own(new THREE.MeshBasicMaterial({color: c, fog:false}));
-  add(new THREE.PlaneGeometry(40, 320), nf('#07080b'), 0, -0.6, zF + 160).rotation.x = -Math.PI/2;
-  add(new THREE.PlaneGeometry(700, 260), nf('#0c1020'), 0, 60, zF + 300);
-  for (const s of [-0.72, 0.72]) add(new THREE.BoxGeometry(0.07, 0.04, 320), nf(hdr('#8a90a0', 0.4)), s, -0.56, zF + 160);
-  add(new THREE.BoxGeometry(3, 0.7, 140), nf('#2a2824'), 3.6, -0.25, zF + 70);
-  add(new THREE.BoxGeometry(0.12, 0.01, 140), nf('#b8962e'), 2.2, 0.11, zF + 70);
-  const lampMat = nf(hdr('#ffd9a8', 3)), dot = new THREE.SphereGeometry(0.09, 10, 8);
-  for (let z = zF + 6; z < zF + 140; z += 9) add(dot, lampMat, 3.4, 3.4, z);
-  add(new THREE.BoxGeometry(0.1, 2.4, 0.1), nf('#1a1b1f'), -2.0, 0.6, zF + 44);
-  add(new THREE.SphereGeometry(0.12, 12, 10), nf(hdr('#46ff8a', 5)), -2.0, 1.85, zF + 44);
-  const r = rng(hash(T.tr.id + 'city')), pts = [], cols = [];
-  for (let i = 0; i < 260; i++){ pts.push((r() - .5)*320, r()*36 - 2, zF + 200 + r()*80); const c = new THREE.Color(r() < .75 ? '#ffcf8a' : '#cfe0ff'); cols.push(c.r, c.g, c.b); }
-  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); pg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  g.add(new THREE.Points(pg, own(new THREE.PointsMaterial({size:2, sizeAttenuation:false, vertexColors:true, fog:false}))));
   // driver in his seat, facing the windscreen
   const driver = buildDriver(); driver.root.position.set(CAB.seatX, 0, CAB.seatZ); driver.root.rotation.y = Math.PI; g.add(driver.root);
   return {driver};
@@ -919,10 +903,23 @@ function buildInterior(T){
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V3(), sc = new V3(1,1,1);
   carpetTex.repeat.set(3, len/1.3);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(2*W, len), MI.carpet); floor.rotation.x = -Math.PI/2; floor.position.set(0, 0, mid); g.add(floor);
+  floor.userData.floor = true; const floors = [floor];
+  // window positions: every 1.9 m down the train, plus one each side in the cab
+  const wz = []; for (let z = zA - 1.4; z > zB + 0.8; z -= 1.9) wz.push(z);
+  wz.push((zA + zF)/2 + 0.3);
+  const WIN = {w:1.3, y0:0.99, y1:1.61};
+  // upper wall with real openings, so the station (drawn first by the exterior pass) shows through
+  const holedWall = s => {
+    const sh = new THREE.Shape(); sh.moveTo(zB, 0.92); sh.lineTo(zF, 0.92); sh.lineTo(zF, 2.12); sh.lineTo(zB, 2.12); sh.closePath();
+    for (const z of wz){ const h = new THREE.Path(); h.moveTo(z - WIN.w/2, WIN.y0); h.lineTo(z - WIN.w/2, WIN.y1); h.lineTo(z + WIN.w/2, WIN.y1); h.lineTo(z + WIN.w/2, WIN.y0); h.closePath(); sh.holes.push(h); }
+    const geo = new THREE.ShapeGeometry(sh), pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++){ const u = pos.getX(i), v = pos.getY(i); pos.setXYZ(i, s*W, v, u); }
+    geo.computeVertexNormals(); return new THREE.Mesh(geo, MI.wallUp);
+  };
   for (const s of [-1, 1]){
     const ry = s < 0 ? Math.PI/2 : -Math.PI/2;
     const lower = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.92), MI.wall); lower.rotation.y = ry; lower.position.set(s*W, 0.46, mid); g.add(lower);
-    const up = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.2), MI.wallUp); up.rotation.y = ry; up.position.set(s*W, 0.92 + 0.6, mid); g.add(up);
+    g.add(holedWall(s));
     // luggage racks only in seated coaches (sleeper bays have the upper berths there)
     for (const c of T.coaches){ if (c.cls === 'Sleeper') continue;
       const top = c.n === 1 ? zA : c.z0, cl = top - c.z1, cm = (top + c.z1)/2;
@@ -932,7 +929,13 @@ function buildInterior(T){
     const sill = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, len), MI.frame); sill.position.set(s*(W-0.04), 0.94, mid); g.add(sill);
   }
   // windows
-  const wz = []; for (let z = zA - 1.4; z > zB + 0.6; z -= 1.9) wz.push(z);
+  // window frames
+  const frames = new THREE.InstancedMesh(GEO.unit, MI.frame, wz.length*8); let f = 0;
+  const bar = (x, y, z, sx, sy, sz) => { m.compose(p.set(x, y, z), q.identity(), sc.set(sx, sy, sz)); frames.setMatrixAt(f++, m); };
+  for (const z of wz) for (const s of [-1, 1]){ const x = s*(W - 0.03);
+    bar(x, WIN.y1 + 0.02, z, 0.06, 0.04, WIN.w + 0.08); bar(x, WIN.y0 - 0.02, z, 0.06, 0.04, WIN.w + 0.08);
+    bar(x, (WIN.y0 + WIN.y1)/2, z - WIN.w/2 - 0.02, 0.06, WIN.y1 - WIN.y0, 0.04); bar(x, (WIN.y0 + WIN.y1)/2, z + WIN.w/2 + 0.02, 0.06, WIN.y1 - WIN.y0, 0.04); }
+  sc.set(1, 1, 1); frames.computeBoundingSphere(); g.add(frames);
   const winIM = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.3, 0.62), MI.glass, wz.length*2); let k = 0;
   for (const z of wz) for (const s of [-1, 1]){ q.setFromAxisAngle(UP, s < 0 ? Math.PI/2 : -Math.PI/2); p.set(s*(W-0.01), 1.3, z); m.compose(p, q, sc); winIM.setMatrixAt(k++, m); }
   winIM.computeBoundingSphere(); g.add(winIM);
@@ -965,7 +968,7 @@ function buildInterior(T){
   };
   T.coaches.forEach((c, i) => {
     const cl = c.z0 - c.z1;
-    const run = new THREE.Mesh(new THREE.PlaneGeometry(c.aisleHalf*2, cl), MI.runner); run.rotation.x = -Math.PI/2; run.position.set(c.aisle, 0.003, (c.z0 + c.z1)/2); g.add(run);
+    const run = new THREE.Mesh(new THREE.PlaneGeometry(c.aisleHalf*2, cl), MI.runner); run.rotation.x = -Math.PI/2; run.position.set(c.aisle, 0.003, (c.z0 + c.z1)/2); g.add(run); run.userData.floor = true; floors.push(run);
     for (let z = c.z0 - 0.8; z > c.z1 + 0.4; z -= 0.95) for (const s of [-1,1]) dots.push([c.aisle + s*(c.aisleHalf - 0.05), z]);
     if (i > 0) doors.push(partition(c.z0, signTex(c.n), false));
   });
@@ -1089,7 +1092,7 @@ function buildInterior(T){
   bagM.forEach(([pp, ss, col], i) => { m.compose(pp, new THREE.Quaternion(), ss); rackBags.setMatrixAt(i, m); rackBags.setColorAt(i, col); });
   rackBags.computeBoundingSphere(); g.add(rackBags);
 
-  I = {group:g, T, seats, pick, doors, cab, cushIM, backIM, headIM, berthIM, zMax: CAB.stand, zMin: zB + 2.6};
+  I = {group:g, T, seats, pick, doors, cab, floor: floors, cushIM, backIM, headIM, berthIM, zMax: CAB.stand, zMin: zB + 2.6};
   return I;
 }
 
@@ -1099,7 +1102,18 @@ const composer = new EffectComposer(renderer, rt);
 composer.setPixelRatio(PR);
 const renderPass = new RenderPass(extScene, camera);
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.38, 0.4, 1.05);
-composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(new OutputPass());
+const intPass = new RenderPass(intScene, camera); intPass.clear = false; intPass.clearDepth = true; intPass.enabled = false;
+composer.addPass(renderPass); composer.addPass(intPass); composer.addPass(bloom); composer.addPass(new OutputPass());
+// winCam = the inside camera mapped into station space: interior -z is exterior +x, interior +x is the platform side (+z), floor 1.2 m up
+const winCam = new THREE.PerspectiveCamera(); winCam.matrixAutoUpdate = false;
+const INT2EXT = new THREE.Matrix4();
+function syncWinCam(){
+  camera.updateMatrixWorld();
+  INT2EXT.makeRotationY(-Math.PI/2).setPosition(EXT ? EXT.group.position.x : 0, 1.2, 0);
+  winCam.matrix.multiplyMatrices(INT2EXT, camera.matrixWorld);
+  winCam.updateMatrixWorld(true);   // matrixAutoUpdate is off, so push matrix -> matrixWorld (and its inverse) explicitly
+  winCam.projectionMatrix.copy(camera.projectionMatrix); winCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+}
 
 /* ============================================================ camera rigs */
 const extCam = {pos:new V3(-24, 9, 26), look:new V3(18, 2, 0), auto:true};
@@ -1119,8 +1133,7 @@ addEventListener('resize', resize);
 
 const EYE = 1.78, EYE_SL = 1.6, PITCH = -0.2;   // eye drops a little in sleeper coaches so the upper berths aren't at eye level
 const walk = {z:-0.6, tz:-0.6, vel:0, yaw:0, tyaw:0, pitch:PITCH, tpitch:PITCH, x:0, eye:EYE, intro:0, dragging:false, walked:0};
-let look360 = false;
-const orbit = {on:false, az:0, el:0, dist:20, taz:0, tel:0, tdist:20};   // exterior 360° orbit                                        // on: drags look around freely; off: vertical drag walks
+const orbit = {on:false, az:0, el:0, dist:20, taz:0, tel:0, tdist:20};   // exterior 360° orbit
 const fwdSign = () => Math.cos(walk.yaw) >= 0 ? 1 : -1;      // walk along the aisle in whichever direction you face
 const viewZ = () => walk.z - 2.4*Math.cos(walk.yaw);         // roughly where you are looking (for the coach chip)
 const wrapA = a => a - Math.PI*2*Math.round(a/(Math.PI*2));
@@ -1413,7 +1426,7 @@ async function board(ci){
 
 function enterInterior(ci){
   if (!I || I.T !== S.T) buildInterior(S.T);
-  mode = 'int'; renderPass.scene = intScene; camera.clearViewOffset(); viewShift = viewShiftY = 0; applyFov();
+  mode = 'int'; renderPass.camera = winCam; intPass.enabled = true; if (EXT) EXT.group.visible = false; camera.clearViewOffset(); viewShift = viewShiftY = 0; applyFov();
   const c = S.T.coaches[Math.max(0, ci)];
   if (ci < 0){ walk.z = 1.2; walk.tz = CAB.stand; walk.yaw = walk.tyaw = Math.PI; }        // step into the cab, facing the driver
   else { walk.z = walk.tz = clamp(c.z0 - 0.7, I.zMin, I.zMax); walk.yaw = walk.tyaw = 0; }
@@ -1425,17 +1438,15 @@ function enterInterior(ci){
 }
 function setHint(){
   $('#hint').style.opacity = 1; walk.walked = 0;
-  $('#hintText').textContent = look360 ? (COARSE ? 'Drag to look around 360°' : 'Drag to look around 360° · scroll to walk')
-                                       : (COARSE ? 'Drag down to walk · sideways to turn around' : 'Scroll or drag down to walk · drag sideways to turn');
+  $('#hintText').textContent = COARSE ? 'Drag to look around 360° · tap the floor to walk' : 'Drag to look around 360° · scroll or click the floor to walk';
 }
-function toggleLook(){ look360 = !look360; if (!look360) walk.tpitch = PITCH; setHint(); updateSeatUI(); }
 function goCab(){ walk.tz = CAB.stand; walk.vel = 0; faceTo(Math.PI); walk.tpitch = PITCH; }
 function goSeats(){ walk.tz = clamp(-0.7, I.zMin, I.zMax); walk.vel = 0; faceTo(0); walk.tpitch = PITCH; }
 
 async function exitInterior(){
   if (busy) return; busy = true;
   await fade(1, 350);
-  mode = 'ext'; renderPass.scene = extScene; applyFov(); $('#tag').hidden = true; $('#say').hidden = true; stopOrbit();
+  mode = 'ext'; renderPass.camera = camera; intPass.enabled = false; if (EXT) EXT.group.visible = true; applyFov(); $('#tag').hidden = true; $('#say').hidden = true; stopOrbit();
   setStep('train');
   const v = extView(); extCam.pos.copy(v.pos).add(new V3(-3, 1, 3)); extCam.look.copy(v.look); extCam.auto = true;
   await fade(0, 500); busy = false; setStep('train');
@@ -1450,7 +1461,6 @@ const seatPrice = s => { const t = trainFor(S.T.tr); return s.cls === 'First' ? 
 const seatTag = s => s.plate || s.label;                       // "9C" or "12 UB"
 const seatWord = s => s.berth ? 'berth' : 'seat';
 const seatRef = s => `C${s.coach} · ${seatTag(s)}`;   // "C4 · 12 UB"
-const ICON_360 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3v3M12 18v3"/><path d="M17 16l2 .5-1 1.8"/></svg>';
 const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>';
 function updateSeatUI(){
   if (!I) return; const cab = inCab(), c = coachAt(viewZ()); lastCoachN = cab ? 'cab' : c.n;
@@ -1465,11 +1475,10 @@ function updateSeatUI(){
     if (s.rear) h += `<span class="chip">Rear-facing</span>`;
   }
   if (n) h += `<span class="chip tot">${inr(total)}</span>`;
-  h += `<button class="chip toggle" id="lookChip" aria-pressed="${look360}">${ICON_360}360°</button>`;
   h += `<button class="chip go" id="cabChip">${cab ? 'Back to seats' : "Driver's cab"}</button>`;
   chipsEl.innerHTML = h;
   const cc = $('#coachChip'); if (cc) cc.onclick = toggleCoachMenu;
-  $('#lookChip').onclick = toggleLook; $('#cabChip').onclick = cab ? goSeats : goCab;
+  $('#cabChip').onclick = cab ? goSeats : goCab;
   chipsEl.querySelectorAll('.rm').forEach(b => b.onclick = () => { const s = S.sels.find(x => x.id === b.dataset.id); if (s) toggleSeat(s); });
   cta.disabled = !n;
   const word = n > 1 ? (sels.every(s => s.berth) ? 'berths' : sels.some(s => s.berth) ? 'places' : 'seats') : '';
@@ -1573,9 +1582,15 @@ function updateDriver(t){
   }
   sayEl.hidden = !vis;
 }
+// click / tap the floor to glide there along the aisle
+function walkTo(cx, cy){
+  ndc.set(cx/innerWidth*2 - 1, -(cy/innerHeight)*2 + 1); ray.setFromCamera(ndc, camera);
+  const h = ray.intersectObjects([...I.floor, ...I.pick], false)[0];
+  if (h?.object.userData.floor){ walk.tz = clamp(h.point.z, I.zMin, I.zMax); walk.vel = 0; noteWalked(); }
+}
 function clickSeat(cx, cy){
   if (pickDriver(cx, cy)){ sayHi(); return; }
-  const s = pickSeat(cx, cy); if (!s) return;
+  const s = pickSeat(cx, cy); if (!s){ walkTo(cx, cy); return; }
   if (s.mine){ toast(`${ICON_PERSON}You already booked ${seatTag(s)}`); return; }
   if (s.taken){ toast(`${ICON_PERSON}${seatTag(s)} is taken`); return; }
   toggleSeat(s);
@@ -1683,9 +1698,7 @@ canvas.addEventListener('pointermove', e => {
     const dx = e.clientX - pd.lx, dy = e.clientY - pd.ly, now = performance.now(), dt = Math.max(8, now - pd.lt)/1000;
     pd.moved += Math.abs(dx) + Math.abs(dy);
     if (mode === 'int' && step === 'seat' && pd.moved > 6){
-      walk.tyaw += dx*0.005;                                                   // full 360° turn
-      if (look360) walk.tpitch = clamp(walk.tpitch + dy*0.004, -1.25, 1.1);
-      else { const dz = -dy*WALK_K*fwdSign(); walk.tz = clamp(walk.tz + dz, I.zMin, I.zMax); walk.vel = lerp(walk.vel, dz/dt, 0.5); if (Math.abs(dz) > 0.02) noteWalked(); }
+      walk.tyaw += dx*0.005; walk.tpitch = clamp(walk.tpitch + dy*0.004, -1.25, 1.1);   // drag looks around a full 360°
       setHoverSeat(null);
     } else if (mode === 'ext' && (step === 'journey' || step === 'train') && !busy && pd.moved > 6){
       if (!orbit.on) startOrbit();
@@ -1729,7 +1742,6 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 's'){ walk.tz = clamp(walk.tz + 0.95*fwdSign(), I.zMin, I.zMax); e.preventDefault(); }
   if (e.key === 'ArrowLeft' || e.key === 'a'){ walk.tyaw += 0.3; e.preventDefault(); }
   if (e.key === 'ArrowRight' || e.key === 'd'){ walk.tyaw -= 0.3; e.preventDefault(); }
-  if (e.key === 'v'){ toggleLook(); }
   if (e.key === 'Enter' && S.sels.length) openTicket();
 });
 
@@ -1774,7 +1786,8 @@ function updateInterior(dt, t){
   const yaw = walk.yaw + walk.intro, cp = Math.cos(walk.pitch);
   camera.position.set(walk.x, walk.eye, walk.z);
   tmpV.set(walk.x - Math.sin(yaw)*cp*10, walk.eye + Math.sin(walk.pitch)*10, walk.z - Math.cos(yaw)*cp*10); camera.lookAt(tmpV);
-  camLight.position.set(walk.x - Math.sin(yaw)*1.6, 2.25, walk.z - Math.cos(yaw)*1.6);
+  camLight.position.set(clamp(walk.x - Math.sin(yaw)*1.6, -1.0, 1.0), 2.25, walk.z - Math.cos(yaw)*1.6);   // stays inside the carriage when you face a window
+  syncWinCam();
   if (I.cab) updateDriver(t);
   for (const d of I.doors){ const o = easeIO(clamp(1 - (Math.abs(walk.z - d.z) - 1.4)/2.4, 0, 1)); d.l.position.x = -0.235 - o*0.46; d.r.position.x = 0.235 + o*0.46; }
   if (S.sels.length){ MI.hi.emissiveIntensity = 0.38 + (REDUCED ? 0 : Math.sin(t*2.6)*0.08); }
