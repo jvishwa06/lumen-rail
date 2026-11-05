@@ -373,7 +373,7 @@ const CLS = { First:{short:'1ST', name:'1st class'}, Standard:{short:'STD', name
 const clsOf = (tr, i) => i === 0 ? 'First' : i >= tr.coaches - (tr.coaches >= 5 ? 2 : 1) ? 'Sleeper' : 'Standard';
 const MAX_SEL = 6;   // seats per booking
 const RESERVATION_FEE = 40;
-const DRIVER_NAME = 'Yash';   // the driver introduces himself with this name
+const DRIVER_NAME = 'Ayush';   // the driver introduces himself with this name
 const stName = c => STATIONS.find(s => s.code === c)?.name || c;
 function routeFactor(a,b){ const k = [a,b].sort().join('>'); return 0.7 + (hash(k) % 95)/100; }
 function addMins(hhmm, m){ const [h,mm] = hhmm.split(':').map(Number); const t = (h*60 + mm + Math.round(m)) % 1440; return String(Math.floor(t/60)).padStart(2,'0') + ':' + String(t%60).padStart(2,'0'); }
